@@ -12,8 +12,23 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
+
+// editorSizedTheme wraps a base theme and overrides only the text size,
+// allowing the EPUB editor to have an independently adjustable font size.
+type editorSizedTheme struct {
+	fyne.Theme
+	size float32
+}
+
+func (t *editorSizedTheme) Size(name fyne.ThemeSizeName) float32 {
+	if name == theme.SizeNameText {
+		return t.size
+	}
+	return t.Theme.Size(name)
+}
 
 func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 	w := a.NewWindow("EPUB Text Editor")
@@ -254,21 +269,46 @@ func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 			}, w)
 	}
 
+	// ── Font size controls ──────────────────────────────────────
+	const fontMin float32 = 8
+	const fontMax float32 = 40
+
+	eTheme := &editorSizedTheme{
+		Theme: a.Settings().Theme(),
+		size:  a.Settings().Theme().Size(theme.SizeNameText),
+	}
+
+	var themedEditor *container.ThemeOverride
+
+	smallerBtn := widget.NewButton("A-", func() {
+		if eTheme.size > fontMin {
+			eTheme.size -= 2
+			themedEditor.Refresh()
+		}
+	})
+	largerBtn := widget.NewButton("A+", func() {
+		if eTheme.size < fontMax {
+			eTheme.size += 2
+			themedEditor.Refresh()
+		}
+	})
+
 	// Layout
 	topBar := container.NewBorder(nil, nil, openBtn, nil, fileLabel)
 
 	editorScroll := container.NewScroll(editor)
 	editorScroll.SetMinSize(fyne.NewSize(0, 300))
+	themedEditor = container.NewThemeOverride(editorScroll, eTheme)
 
 	navBar := container.NewBorder(nil, nil, prevBtn, nextBtn, pageLabel)
 
-	editBar := container.NewHBox(revertBtn, modifiedLabel, layout.NewSpacer())
+	editBar := container.NewHBox(revertBtn, modifiedLabel, layout.NewSpacer(), smallerBtn, largerBtn)
 
 	content := container.NewBorder(
 		container.NewVBox(topBar),
 		container.NewVBox(navBar, slider, editBar, exportBtn, cancelBtn, progress, statusLabel),
 		nil, nil,
-		editorScroll,
+		themedEditor,
 	)
 
 	w.SetContent(content)
