@@ -360,21 +360,21 @@ jobs:
 
       # ── Upload ───────────────────────────────────────────────
       - name: Upload artifact (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: TrimShelf.dmg
 
       - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: TrimShelf-Setup.exe
 
       - name: Upload artifact (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}

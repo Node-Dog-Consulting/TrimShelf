@@ -20,7 +20,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-const githubRepo = "Node-Dog-Consulting/clippy"
+const githubRepo = "Node-Dog-Consulting/TrimShelf"
 
 type githubRelease struct {
 	TagName    string        `json:"tag_name"`
