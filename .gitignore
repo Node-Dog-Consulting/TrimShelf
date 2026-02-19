@@ -1,0 +1,32 @@
+# Go binary
+clippy-go
+clippy-go.exe
+Clippy.app/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python (legacy, in clippy-python/)
+clippy-python/__pycache__/
+clippy-python/*.py[cod]
+clippy-python/venv/
+clippy-python/.venv/
+clippy-python/build/
+clippy-python/dist/
+clippy-python/*.egg-info/
+
+# Windows build binaries
+ffmpeg.exe
+ffprobe.exe
+ffplay.exe
+libmpv-2.dll
+clippy.ico

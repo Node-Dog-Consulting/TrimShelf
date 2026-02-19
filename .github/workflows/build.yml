@@ -1,0 +1,420 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+            goos: darwin
+            goarch: arm64
+            binary: trimshelf
+            artifact_name: TrimShelf-macOS-arm64
+
+          - os: ubuntu-latest
+            name: Linux
+            goos: linux
+            goarch: amd64
+            binary: trimshelf
+            artifact_name: TrimShelf-Linux-amd64
+
+          - os: windows-latest
+            name: Windows
+            goos: windows
+            goarch: amd64
+            binary: trimshelf.exe
+            artifact_name: TrimShelf-Windows-amd64
+
+
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: python3 {0}
+        run: |
+          import os
+          ref = os.environ["GITHUB_REF"]
+          sha = os.environ["GITHUB_SHA"][:7]
+          version = ref.replace("refs/tags/", "") if ref.startswith("refs/tags/v") else f"dev-{sha}"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={version}\n")
+          print(f"Version: {version}")
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: false
+
+      # ── macOS dependencies ─────────────────────────────────
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          eval "$(/opt/homebrew/bin/brew shellenv)"
+          brew list mpv &>/dev/null || brew install mpv
+          MPV_PREFIX=$(/opt/homebrew/bin/brew --prefix mpv)
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig:${MPV_PREFIX}/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "CGO_CFLAGS=-I${MPV_PREFIX}/include" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-L${MPV_PREFIX}/lib -lmpv" >> "$GITHUB_ENV"
+
+      # ── Linux dependencies ─────────────────────────────────
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc \
+            zip \
+            pkg-config \
+            libmpv-dev \
+            libgl1-mesa-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxxf86vm-dev
+
+      # ── Windows dependencies ───────────────────────────────
+      - name: Install MinGW-w64 (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
+            & "$env:ProgramData\chocolatey\bin\choco.exe" install mingw -y --no-progress
+            echo "C:\ProgramData\mingw64\mingw64\bin" >> $env:GITHUB_PATH
+            echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
+          }
+
+      - name: Install mpv-dev (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          # Fetch mpv-dev from shinchiro builds (pinned tag for reproducibility)
+          $mpvTag = "20260211"
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/tags/$mpvTag"
+          $asset = $release.assets | Where-Object { $_.name -match "^mpv-dev-x86_64.*\.7z$" } | Select-Object -First 1
+          if (-not $asset) { Write-Error "No mpv-dev-x86_64 asset found in release $mpvTag"; exit 1 }
+          $mpvUrl = $asset.browser_download_url
+          Write-Host "Downloading: $mpvUrl (pinned: $mpvTag)"
+
+          $archive = "$env:RUNNER_TEMP\mpv-dev.7z"
+          $extractDir = "$env:RUNNER_TEMP\mpv-dev"
+
+          Invoke-WebRequest -Uri $mpvUrl -OutFile $archive
+          & "$env:ProgramFiles\7-Zip\7z.exe" x $archive -o"$extractDir" -y
+
+          # Archive layout (files at root):
+          #   include/mpv/client.h, render.h, ...
+          #   libmpv.dll.a
+          #   libmpv-2.dll
+
+          # Point CGO at the extracted headers and import lib
+          $prefix = $extractDir -replace '\\','/'
+          echo "CGO_CFLAGS=-I$prefix/include" >> $env:GITHUB_ENV
+          echo "CGO_LDFLAGS=-L$prefix -lmpv" >> $env:GITHUB_ENV
+          echo "$extractDir" >> $env:GITHUB_PATH
+
+      # ── Test ─────────────────────────────────────────────────
+      - name: Run tests
+        env:
+          CGO_ENABLED: "1"
+        run: go test -v -tags mpv ./...
+
+      # ── Build ────────────────────────────────────────────────
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+        run: go build -v -tags mpv -trimpath -ldflags "-X main.version=${{ steps.version.outputs.version }} ${{ runner.os == 'Windows' && '-H=windowsgui' || '' }}" -o ${{ matrix.binary }} .
+
+      # ── macOS Code Signing ────────────────────────────────
+      - name: Import signing certificate (macOS)
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 20)"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+
+          # Debug: show what was imported
+          echo "All identities in keychain:"
+          security find-identity -v "$KEYCHAIN_PATH"
+          echo "Codesigning identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          # Find the signing identity and export it for later steps
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          if [ -z "$IDENTITY" ]; then
+            echo "ERROR: No Developer ID Application identity found in keychain"
+            exit 1
+          fi
+          echo "SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "Found signing identity: $IDENTITY"
+
+      - name: Build .app bundle (macOS)
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
+        run: |
+          mkdir -p TrimShelf.app/Contents/MacOS
+          mkdir -p TrimShelf.app/Contents/Resources
+          mkdir -p TrimShelf.app/Contents/Frameworks
+          cp ${{ matrix.binary }} TrimShelf.app/Contents/MacOS/
+          cp packaging/Info.plist TrimShelf.app/Contents/
+          cp packaging/entitlements.plist TrimShelf.app/Contents/
+
+          # Inject version into Info.plist
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NUM="${VERSION#v}"  # strip leading v
+          if [ "$VERSION_NUM" != "" ] && [ "$VERSION_NUM" != "$VERSION" ]; then
+            plutil -replace CFBundleVersion -string "$VERSION_NUM" TrimShelf.app/Contents/Info.plist
+            plutil -replace CFBundleShortVersionString -string "$VERSION_NUM" TrimShelf.app/Contents/Info.plist
+          fi
+          if [ -f assets/icon.icns ]; then
+            cp assets/icon.icns TrimShelf.app/Contents/Resources/
+          fi
+
+          # Bundle libmpv and its dylib dependencies into the .app
+          BINARY="TrimShelf.app/Contents/MacOS/${{ matrix.binary }}"
+          FRAMEWORKS="TrimShelf.app/Contents/Frameworks"
+
+          # Collect all non-system dylibs (Homebrew paths) transitively
+          collect_deps() {
+            local lib="$1"
+            local base
+            base=$(basename "$lib")
+            # Skip if already bundled
+            [ -f "$FRAMEWORKS/$base" ] && return 0
+            echo "Bundling: $lib"
+            cp "$lib" "$FRAMEWORKS/$base"
+            chmod 644 "$FRAMEWORKS/$base"
+            # Find this lib's own Homebrew dependencies
+            for dep in $(otool -L "$lib" | awk '{print $1}' | grep -E '^/(usr/local|opt|homebrew)'); do
+              local real_dep
+              real_dep=$(realpath "$dep" 2>/dev/null || echo "$dep")
+              [ -f "$real_dep" ] && collect_deps "$real_dep"
+            done
+          }
+          export -f collect_deps
+          export FRAMEWORKS
+
+          # Start from the binary's direct Homebrew dependencies
+          for dep in $(otool -L "$BINARY" | awk '{print $1}' | grep -E '^/(usr/local|opt|homebrew)'); do
+            real_dep=$(realpath "$dep" 2>/dev/null || echo "$dep")
+            [ -f "$real_dep" ] && collect_deps "$real_dep"
+          done
+
+          # Rewrite the binary's dylib references to use @rpath
+          for dep in $(otool -L "$BINARY" | awk '{print $1}' | grep -E '^/(usr/local|opt|homebrew)'); do
+            base=$(basename "$dep")
+            install_name_tool -change "$dep" "@rpath/$base" "$BINARY"
+          done
+          install_name_tool -add_rpath "@executable_path/../Frameworks" "$BINARY" 2>/dev/null || true
+
+          # Rewrite each bundled dylib's install name and references
+          for dylib in "$FRAMEWORKS"/*.dylib; do
+            base=$(basename "$dylib")
+            install_name_tool -id "@rpath/$base" "$dylib"
+            for dep in $(otool -L "$dylib" | awk '{print $1}' | grep -E '^/(usr/local|opt|homebrew)'); do
+              dep_base=$(basename "$dep")
+              if [ -f "$FRAMEWORKS/$dep_base" ]; then
+                install_name_tool -change "$dep" "@rpath/$dep_base" "$dylib"
+              fi
+            done
+          done
+
+          echo "Bundled frameworks:"
+          ls -la "$FRAMEWORKS/"
+
+      - name: Codesign .app bundle (macOS)
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
+        run: |
+          # Sign bundled frameworks first
+          for dylib in TrimShelf.app/Contents/Frameworks/*.dylib; do
+            [ -f "$dylib" ] || continue
+            codesign --force --options runtime \
+              --sign "$SIGNING_IDENTITY" "$dylib"
+          done
+          # Then sign the .app (--deep as fallback for any nested code)
+          codesign --force --deep --options runtime --entitlements packaging/entitlements.plist \
+            --sign "$SIGNING_IDENTITY" TrimShelf.app
+
+      - name: Create .dmg (macOS)
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
+        run: |
+          # Stage DMG contents with pre-built layout
+          mkdir -p dmg_stage
+          cp -R TrimShelf.app dmg_stage/
+          ln -s /Applications dmg_stage/Applications
+          cp packaging/dmg_ds_store dmg_stage/.DS_Store
+
+          # Create compressed DMG directly
+          hdiutil create -volname TrimShelf -srcfolder dmg_stage -ov -format UDZO TrimShelf.dmg
+          rm -rf dmg_stage
+
+      - name: Codesign .dmg (macOS)
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
+        run: |
+          codesign --force --sign "$SIGNING_IDENTITY" TrimShelf.dmg
+
+      - name: Notarize .dmg (macOS)
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit TrimShelf.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      - name: Staple notarization ticket (macOS)
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
+        run: |
+          xcrun stapler staple TrimShelf.dmg
+
+      - name: Cleanup keychain (macOS)
+        if: runner.os == 'macOS' && github.event_name != 'pull_request' && always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+
+      # ── Bundle mpv DLL on Windows ──────────────────────────
+      - name: Bundle libmpv-2.dll (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Copy-Item "$env:RUNNER_TEMP\mpv-dev\libmpv-2.dll" -Destination "libmpv-2.dll"
+
+      # ── Windows Installer (Inno Setup) ───────────────────────
+      - name: Convert PNG to ICO (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          if (-not (Get-Command magick -ErrorAction SilentlyContinue)) {
+            & "$env:ProgramData\chocolatey\bin\choco.exe" install imagemagick -y --no-progress
+            # Refresh PATH for current session
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          }
+          magick assets/trimshelf.png -define icon:auto-resize=256,128,64,48,32,16 trimshelf.ico
+
+      - name: Build installer (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $candidates = @(
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "$env:ProgramData\chocolatey\bin\ISCC.exe"
+            )
+            foreach ($c in $candidates) {
+              if (Test-Path $c) { $iscc = $c; break }
+            }
+          } else {
+            $iscc = $iscc.Source
+          }
+          if (-not $iscc) { Write-Error "ISCC.exe not found"; exit 1 }
+          $ver = "${{ steps.version.outputs.version }}" -replace '^v',''
+          if ($ver -and $ver -ne "${{ steps.version.outputs.version }}") {
+            & $iscc "/DAppVersion=$ver" packaging\installer.iss
+          } else {
+            & $iscc packaging\installer.iss
+          }
+
+      # ── Linux zip archive ────────────────────────────────────
+      - name: Create zip archive (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          zip TrimShelf-Linux-amd64.zip ${{ matrix.binary }} assets/trimshelf.png
+
+      # ── Upload ───────────────────────────────────────────────
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: TrimShelf.dmg
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: TrimShelf-Setup.exe
+
+      - name: Upload artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: TrimShelf-Linux-amd64.zip
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+
+          # Find previous release tag
+          PREV=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName // empty')
+
+          # Build changelog from commits since last release
+          NOTES=""
+          if [ -n "$PREV" ]; then
+            NOTES=$(gh api "repos/${{ github.repository }}/compare/${PREV}...${VERSION}" \
+              --jq '[.commits[] | "- " + (.commit.message | split("\n") | .[0])] | join("\n")' 2>/dev/null || true)
+          fi
+
+          if [ -z "$NOTES" ]; then
+            NOTES="Initial release"
+          fi
+
+          printf '## What'\''s Changed\n\n%s\n' "$NOTES" > release_notes.md
+
+          gh release create "$VERSION" \
+            --repo "${{ github.repository }}" \
+            --title "TrimShelf $VERSION" \
+            --notes-file release_notes.md \
+            artifacts/**/*
