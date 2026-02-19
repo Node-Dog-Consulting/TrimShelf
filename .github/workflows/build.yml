@@ -2,10 +2,10 @@ name: Build
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     tags: ['v*']
   pull_request:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -17,21 +17,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: [self-hosted, macOS]
             name: macOS
             goos: darwin
             goarch: arm64
             binary: trimshelf
             artifact_name: TrimShelf-macOS-arm64
 
-          - os: ubuntu-latest
+          - os: [self-hosted, Linux]
             name: Linux
             goos: linux
             goarch: amd64
             binary: trimshelf
             artifact_name: TrimShelf-Linux-amd64
 
-          - os: windows-latest
+          - os: [self-hosted, Windows]
             name: Windows
             goos: windows
             goarch: amd64
