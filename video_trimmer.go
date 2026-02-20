@@ -73,7 +73,7 @@ func (b *repeatButton) MouseDown(ev *desktop.MouseEvent) {
 			return
 		case <-delay.C:
 		}
-		ticker := time.NewTicker(500 * time.Millisecond)
+		ticker := time.NewTicker(300 * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {
