@@ -75,9 +75,15 @@ func (b *repeatButton) MouseDown(ev *desktop.MouseEvent) {
 		}
 		ticker := time.NewTicker(300 * time.Millisecond)
 		defer ticker.Stop()
+		// Safety net: stop repeating after 10s in case MouseUp/MouseOut
+		// is never delivered (e.g. window focus lost on Windows).
+		maxDuration := time.NewTimer(10 * time.Second)
+		defer maxDuration.Stop()
 		for {
 			select {
 			case <-ch:
+				return
+			case <-maxDuration.C:
 				return
 			case <-ticker.C:
 				b.onPress()
@@ -87,6 +93,20 @@ func (b *repeatButton) MouseDown(ev *desktop.MouseEvent) {
 }
 
 func (b *repeatButton) MouseUp(ev *desktop.MouseEvent) {
+	b.mu.Lock()
+	if b.stopCh != nil {
+		close(b.stopCh)
+		b.stopCh = nil
+	}
+	b.mu.Unlock()
+}
+
+func (b *repeatButton) MouseIn(_ *desktop.MouseEvent) {}
+func (b *repeatButton) MouseMoved(_ *desktop.MouseEvent) {}
+
+// MouseOut stops the repeat goroutine when the cursor leaves the button.
+// On Windows, MouseUp can be lost if focus changes while the button is held.
+func (b *repeatButton) MouseOut() {
 	b.mu.Lock()
 	if b.stopCh != nil {
 		close(b.stopCh)
