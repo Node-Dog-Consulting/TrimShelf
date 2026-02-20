@@ -66,14 +66,14 @@ func (b *repeatButton) MouseDown(ev *desktop.MouseEvent) {
 	b.mu.Unlock()
 
 	go func() {
-		delay := time.NewTimer(500 * time.Millisecond)
+		delay := time.NewTimer(800 * time.Millisecond)
 		defer delay.Stop()
 		select {
 		case <-ch:
 			return
 		case <-delay.C:
 		}
-		ticker := time.NewTicker(300 * time.Millisecond)
+		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {

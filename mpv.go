@@ -300,7 +300,7 @@ func (p *MpvPlayer) SeekRelative(delta float64) {
 	}
 	cCmd := C.CString("seek")
 	cDelta := C.CString(fmt.Sprintf("%f", delta))
-	cRel := C.CString("relative")
+	cRel := C.CString("relative+exact")
 	defer C.free(unsafe.Pointer(cCmd))
 	defer C.free(unsafe.Pointer(cDelta))
 	defer C.free(unsafe.Pointer(cRel))
