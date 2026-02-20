@@ -177,6 +177,7 @@ func ShowVideoTrimmer(a fyne.App, picker fyne.Window) {
 
 	scrubber := widget.NewSlider(0, 1000)
 	scrubber.Step = 1
+	var updatingScrubber bool
 
 	markLabel := widget.NewLabel("No mark set")
 	markLabel.Importance = widget.LowImportance
@@ -230,11 +231,12 @@ func ShowVideoTrimmer(a fyne.App, picker fyne.Window) {
 
 	// Scrubber events
 	scrubber.OnChanged = func(val float64) {
-		if durationSec > 0 {
-			pos := (val / 1000) * durationSec
-			timeLabel.SetText(formatTimeMs(pos * 1000))
-			player.Seek(pos)
+		if updatingScrubber || durationSec <= 0 {
+			return
 		}
+		pos := (val / 1000) * durationSec
+		timeLabel.SetText(formatTimeMs(pos * 1000))
+		player.Seek(pos)
 	}
 
 	// Position update goroutine
@@ -256,8 +258,10 @@ func ShowVideoTrimmer(a fyne.App, picker fyne.Window) {
 				if durationSec > 0 {
 					pos := player.GetPosition()
 					fyne.Do(func() {
-						timeLabel.SetText(formatTimeMs(pos * 1000))
+						updatingScrubber = true
 						scrubber.SetValue((pos / durationSec) * 1000)
+						updatingScrubber = false
+						timeLabel.SetText(formatTimeMs(pos * 1000))
 					})
 				}
 			}

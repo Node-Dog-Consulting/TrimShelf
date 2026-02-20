@@ -54,6 +54,8 @@ func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 	editor.Wrapping = fyne.TextWrapWord
 	editor.Disable()
 
+	var editorScroll *container.Scroll
+
 	pageLabel := widget.NewLabel("No file loaded")
 	pageLabel.Alignment = fyne.TextAlignCenter
 
@@ -146,6 +148,9 @@ func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 		}
 
 		editor.SetText(text)
+		if editorScroll != nil {
+			editorScroll.ScrollToTop()
+		}
 		updateModifiedLabel()
 	}
 
@@ -296,7 +301,7 @@ func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 	// Layout
 	topBar := container.NewBorder(nil, nil, openBtn, nil, fileLabel)
 
-	editorScroll := container.NewScroll(editor)
+	editorScroll = container.NewScroll(editor)
 	editorScroll.SetMinSize(fyne.NewSize(0, 300))
 	themedEditor = container.NewThemeOverride(editorScroll, eTheme)
 
