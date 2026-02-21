@@ -40,6 +40,10 @@ func main() {
 		picker.Hide()
 		ShowEpubEditor(a, picker)
 	})
+	btn6 := widget.NewButton("M4B Tag Editor", func() {
+		picker.Hide()
+		ShowTagEditor(a, picker)
+	})
 
 	updateBtn := widget.NewButton("Check for Updates", func() {
 		go showUpdateDialogManual(picker)
@@ -50,14 +54,14 @@ func main() {
 		layout.NewSpacer(),
 		title,
 		widget.NewSeparator(),
-		btn1, btn2, btn3, btn4, btn5,
+		btn1, btn2, btn3, btn4, btn5, btn6,
 		widget.NewSeparator(),
 		updateBtn,
 		layout.NewSpacer(),
 	)
 
 	picker.SetContent(container.NewPadded(content))
-	picker.Resize(fyne.NewSize(320, 370))
+	picker.Resize(fyne.NewSize(320, 400))
 	picker.CenterOnScreen()
 	picker.SetCloseIntercept(func() {
 		a.Quit()
