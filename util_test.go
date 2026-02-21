@@ -1,6 +1,7 @@
 package main
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -78,6 +79,39 @@ func TestEscapeFFMeta(t *testing.T) {
 		got := escapeFFMeta(tt.input)
 		if got != tt.want {
 			t.Errorf("escapeFFMeta(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestUriPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		tests := []struct {
+			input string
+			want  string
+		}{
+			{"/C:/Users/foo/bar.m4b", `C:\Users\foo\bar.m4b`},
+			{"/D:/My Documents/file.epub", `D:\My Documents\file.epub`},
+		}
+		for _, tt := range tests {
+			got := uriPath(tt.input)
+			if got != tt.want {
+				t.Errorf("uriPath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		}
+	} else {
+		tests := []struct {
+			input string
+			want  string
+		}{
+			{"/home/user/file.m4b", "/home/user/file.m4b"},
+			{"/tmp/foo/../bar.m4b", "/tmp/bar.m4b"},
+			{"/Users/alice/My File.epub", "/Users/alice/My File.epub"},
+		}
+		for _, tt := range tests {
+			got := uriPath(tt.input)
+			if got != tt.want {
+				t.Errorf("uriPath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
 		}
 	}
 }

@@ -101,7 +101,7 @@ func (b *repeatButton) MouseUp(ev *desktop.MouseEvent) {
 	b.mu.Unlock()
 }
 
-func (b *repeatButton) MouseIn(_ *desktop.MouseEvent) {}
+func (b *repeatButton) MouseIn(_ *desktop.MouseEvent)    {}
 func (b *repeatButton) MouseMoved(_ *desktop.MouseEvent) {}
 
 // MouseOut stops the repeat goroutine when the cursor leaves the button.
@@ -522,6 +522,42 @@ func ShowVideoTrimmer(a fyne.App, picker fyne.Window) {
 	w.Show()
 }
 
+// videoKeepSegments merges overlapping cuts and returns the inverse: the
+// segments of [0, durationSec] that should be kept. Segments shorter than
+// minSegmentGap are omitted.
+func videoKeepSegments(cuts []videoCut, durationSec float64) []videoCut {
+	sorted := make([]videoCut, len(cuts))
+	copy(sorted, cuts)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Start < sorted[j].Start
+	})
+
+	var merged []videoCut
+	for _, c := range sorted {
+		if len(merged) > 0 && c.Start <= merged[len(merged)-1].End {
+			last := &merged[len(merged)-1]
+			if c.End > last.End {
+				last.End = c.End
+			}
+		} else {
+			merged = append(merged, c)
+		}
+	}
+
+	var segments []videoCut
+	currentPos := 0.0
+	for _, c := range merged {
+		if c.Start > currentPos+minSegmentGap {
+			segments = append(segments, videoCut{Start: currentPos, End: c.Start})
+		}
+		currentPos = c.End
+	}
+	if currentPos < durationSec-minSegmentGap {
+		segments = append(segments, videoCut{Start: currentPos, End: durationSec})
+	}
+	return segments
+}
+
 func doVideoTrim(ctx context.Context, cancel context.CancelFunc, w fyne.Window, inputPath, outputPath string, cuts []videoCut, durationSec float64,
 	encMode string, gpuEncoder string,
 	cutBtn *widget.Button, cancelBtn *widget.Button, progress *widget.ProgressBar, progressLabel *widget.Label) {
@@ -555,37 +591,7 @@ func doVideoTrim(ctx context.Context, cancel context.CancelFunc, w fyne.Window, 
 		}
 		defer os.RemoveAll(tmpDir)
 
-		// Merge overlapping cuts
-		sortedCuts := make([]videoCut, len(cuts))
-		copy(sortedCuts, cuts)
-		sort.Slice(sortedCuts, func(i, j int) bool {
-			return sortedCuts[i].Start < sortedCuts[j].Start
-		})
-
-		var mergedCuts []videoCut
-		for _, c := range sortedCuts {
-			if len(mergedCuts) > 0 && c.Start <= mergedCuts[len(mergedCuts)-1].End {
-				last := &mergedCuts[len(mergedCuts)-1]
-				if c.End > last.End {
-					last.End = c.End
-				}
-			} else {
-				mergedCuts = append(mergedCuts, c)
-			}
-		}
-
-		// Compute keep segments
-		var segments []videoCut
-		currentPos := 0.0
-		for _, c := range mergedCuts {
-			if c.Start > currentPos+minSegmentGap {
-				segments = append(segments, videoCut{Start: currentPos, End: c.Start})
-			}
-			currentPos = c.End
-		}
-		if currentPos < durationSec-minSegmentGap {
-			segments = append(segments, videoCut{Start: currentPos, End: durationSec})
-		}
+		segments := videoKeepSegments(cuts, durationSec)
 
 		if len(segments) == 0 {
 			fyne.Do(func() {
