@@ -1,6 +1,6 @@
 # TrimShelf
 
-A cross-platform desktop toolkit for trimming and editing audiobooks, video files, and ebooks. TrimShelf bundles five focused tools into a single lightweight app.
+A cross-platform desktop toolkit for trimming and editing audiobooks, video files, and ebooks. TrimShelf bundles six focused tools into a single lightweight app.
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![Go](https://img.shields.io/badge/Go-1.25-00ADD8)
@@ -44,6 +44,15 @@ Remove unwanted sections from a video file with frame-accurate cutting and hardw
   - **GPU re-encode** — frame-accurate, hardware accelerated (Apple VideoToolbox, NVIDIA NVENC, AMD AMF, Intel QuickSync detected automatically)
   - **CPU re-encode** — frame-accurate, software encoder
 - Output saved alongside the source file with a `_trimmed` suffix
+
+### M4B Tag Editor
+Edit the metadata tags and cover art of an M4B audiobook without re-encoding the audio.
+
+- Opens `.m4b` / `.m4a` files
+- Displays and edits **Title** and **Artist** tags
+- Shows the embedded cover art; replace it with any `.jpg` or `.png` image
+- Preserves all existing chapter metadata in the output
+- Exports a new `_tagged.m4b` with updated tags and cover via stream copy (no quality loss)
 
 ### EPUB Chapter Cutter
 Remove selected chapters from an EPUB ebook while keeping the rest of the document intact.
@@ -183,6 +192,7 @@ trimshelf/
 ├── video_trimmer.go         # Video Trimmer tool (MPV build only)
 ├── mpv.go                   # MPV C bindings (MPV build only)
 ├── mpv_stub.go              # MPV stub for non-MPV builds
+├── tag_editor.go            # M4B Tag Editor tool
 ├── epub_cutter.go           # EPUB Chapter Cutter tool
 ├── epub_editor.go           # EPUB Text Editor tool
 ├── epub_util.go             # EPUB ZIP/XML read-write utilities
