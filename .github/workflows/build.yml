@@ -17,21 +17,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: [self-hosted, macOS]
+          - os: macos-latest
             name: macOS
             goos: darwin
             goarch: arm64
             binary: trimshelf
             artifact_name: TrimShelf-macOS-arm64
 
-          - os: [self-hosted, Linux]
+          - os: ubuntu-latest
             name: Linux
             goos: linux
             goarch: amd64
             binary: trimshelf
             artifact_name: TrimShelf-Linux-amd64
 
-          - os: [self-hosted, Windows]
+          - os: windows-latest
             name: Windows
             goos: windows
             goarch: amd64
