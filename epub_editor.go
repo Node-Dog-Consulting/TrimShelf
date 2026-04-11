@@ -11,7 +11,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -203,14 +202,14 @@ func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 						return
 					}
 					// Actually open
-					showOpenDialog(a, w, &sourcePath, &book, &spineItems, &currentPage,
+					showOpenDialog(w, &sourcePath, &book, &spineItems, &currentPage,
 						originalTexts, editedTexts, fileLabel, statusLabel,
 						editor, slider, revertBtn, exportBtn, showPage, updateModifiedLabel)
 				}, w)
 			return
 		}
 
-		showOpenDialog(a, w, &sourcePath, &book, &spineItems, &currentPage,
+		showOpenDialog(w, &sourcePath, &book, &spineItems, &currentPage,
 			originalTexts, editedTexts, fileLabel, statusLabel,
 			editor, slider, revertBtn, exportBtn, showPage, updateModifiedLabel)
 	})
@@ -237,13 +236,7 @@ func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 				}
 
 				defaultName := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath)) + "_edited.epub"
-				fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
-					if err != nil || writer == nil {
-						return
-					}
-					outPath := uriPath(writer.URI().Path())
-					writer.Close()
-
+				pickSaveFile(defaultName, filterEPUB, func(outPath string) {
 					exportBtn.Disable()
 					cancelBtn.Show()
 					progress.Show()
@@ -267,10 +260,7 @@ func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 						defer cancel()
 						doEpubEdit(ctx, w, sourcePath, outPath, spineItems, editsCopy, progress, statusLabel, exportBtn, cancelBtn)
 					}()
-				}, w)
-				fd.SetFileName(defaultName)
-				fd.SetFilter(storage.NewExtensionFileFilter([]string{".epub"}))
-				fd.Show()
+				})
 			}, w)
 	}
 
@@ -323,7 +313,7 @@ func ShowEpubEditor(a fyne.App, picker fyne.Window) {
 	w.Show()
 }
 
-func showOpenDialog(a fyne.App, w fyne.Window, sourcePath *string, book **EpubBook,
+func showOpenDialog(w fyne.Window, sourcePath *string, book **EpubBook,
 	spineItems *[]SpineItemInfo, currentPage *int,
 	originalTexts, editedTexts map[int]string,
 	fileLabel, statusLabel *widget.Label,
@@ -331,13 +321,7 @@ func showOpenDialog(a fyne.App, w fyne.Window, sourcePath *string, book **EpubBo
 	revertBtn, exportBtn *widget.Button,
 	showPage func(int), updateModifiedLabel func()) {
 
-	fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		if err != nil || reader == nil {
-			return
-		}
-		reader.Close()
-		path := uriPath(reader.URI().Path())
-
+	pickFile(filterEPUB, func(path string) {
 		b, err := ReadEpub(path)
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("failed to read EPUB: %w", err), w)
@@ -375,9 +359,7 @@ func showOpenDialog(a fyne.App, w fyne.Window, sourcePath *string, book **EpubBo
 		statusLabel.SetText(fmt.Sprintf("%d chapters loaded", len(items)))
 
 		showPage(0)
-	}, w)
-	fd.SetFilter(storage.NewExtensionFileFilter([]string{".epub"}))
-	fd.Show()
+	})
 }
 
 func doEpubEdit(ctx context.Context, w fyne.Window, sourcePath, outPath string, spineItems []SpineItemInfo, editedTexts map[int]string,

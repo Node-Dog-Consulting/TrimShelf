@@ -21,7 +21,6 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -289,13 +288,7 @@ func ShowVideoTrimmer(a fyne.App, picker fyne.Window) {
 	}()
 
 	browseBtn := widget.NewButton("Browse...", func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil || reader == nil {
-				return
-			}
-			reader.Close()
-			path := uriPath(reader.URI().Path())
-
+		pickFile(filterVideo, func(path string) {
 			videoPath = path
 			cuts = nil
 			markInTime = nil
@@ -309,11 +302,7 @@ func ShowVideoTrimmer(a fyne.App, picker fyne.Window) {
 
 			player.LoadVideo(path)
 			cutsList.Refresh()
-		}, w)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{
-			".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpeg", ".mpg",
-		}))
-		fd.Show()
+		})
 	})
 
 	playBtn = widget.NewButton("Play", func() {

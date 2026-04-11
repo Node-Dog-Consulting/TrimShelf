@@ -10,7 +10,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -87,13 +86,7 @@ func ShowEpubCutter(a fyne.App, picker fyne.Window) {
 	cancelBtn.Hide()
 
 	openBtn := widget.NewButton("Open EPUB File", func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil || reader == nil {
-				return
-			}
-			reader.Close()
-			path := uriPath(reader.URI().Path())
-
+		pickFile(filterEPUB, func(path string) {
 			book, err := ReadEpub(path)
 			if err != nil {
 				dialog.ShowError(fmt.Errorf("failed to read EPUB: %w", err), w)
@@ -113,9 +106,7 @@ func ShowEpubCutter(a fyne.App, picker fyne.Window) {
 			chapterList.Refresh()
 			exportBtn.Enable()
 			statusLabel.SetText(fmt.Sprintf("%d chapters loaded", len(items)))
-		}, w)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".epub"}))
-		fd.Show()
+		})
 	})
 
 	exportBtn.OnTapped = func() {
@@ -138,13 +129,7 @@ func ShowEpubCutter(a fyne.App, picker fyne.Window) {
 				}
 
 				defaultName := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath)) + "_cut.epub"
-				fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
-					if err != nil || writer == nil {
-						return
-					}
-					outPath := uriPath(writer.URI().Path())
-					writer.Close()
-
+				pickSaveFile(defaultName, filterEPUB, func(outPath string) {
 					exportBtn.Disable()
 					cancelBtn.Show()
 					progress.Show()
@@ -162,10 +147,7 @@ func ShowEpubCutter(a fyne.App, picker fyne.Window) {
 						defer cancel()
 						doEpubCut(ctx, w, sourcePath, outPath, selectedIDs, progress, statusLabel, exportBtn, cancelBtn)
 					}()
-				}, w)
-				fd.SetFileName(defaultName)
-				fd.SetFilter(storage.NewExtensionFileFilter([]string{".epub"}))
-				fd.Show()
+				})
 			}, w)
 	}
 

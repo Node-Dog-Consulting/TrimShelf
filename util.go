@@ -10,7 +10,45 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"fyne.io/fyne/v2"
+	"github.com/ncruces/zenity"
 )
+
+// File-picker filter sets used by all tools.
+var (
+	filterM4B    = zenity.FileFilters{{Name: "M4B/M4A Audio", Patterns: []string{"*.m4b", "*.m4a"}}}
+	filterM4BSave = zenity.FileFilters{{Name: "M4B Audio", Patterns: []string{"*.m4b"}}}
+	filterVideo  = zenity.FileFilters{{Name: "Video Files", Patterns: []string{"*.mp4", "*.mkv", "*.avi", "*.mov", "*.wmv", "*.flv", "*.webm", "*.m4v", "*.mpeg", "*.mpg"}}}
+	filterEPUB   = zenity.FileFilters{{Name: "EPUB", Patterns: []string{"*.epub"}}}
+	filterImage  = zenity.FileFilters{{Name: "Images", Patterns: []string{"*.jpg", "*.jpeg", "*.png"}}}
+)
+
+// pickFile opens a native file-open dialog in a background goroutine and
+// calls onPick with the chosen path on the Fyne UI thread. Cancellation is
+// silently ignored.
+func pickFile(filters zenity.FileFilters, onPick func(path string)) {
+	go func() {
+		path, err := zenity.SelectFile(filters)
+		if err != nil || path == "" {
+			return
+		}
+		fyne.Do(func() { onPick(path) })
+	}()
+}
+
+// pickSaveFile opens a native file-save dialog in a background goroutine and
+// calls onPick with the chosen path on the Fyne UI thread. Cancellation is
+// silently ignored.
+func pickSaveFile(defaultName string, filters zenity.FileFilters, onPick func(path string)) {
+	go func() {
+		path, err := zenity.SelectFileSave(zenity.Filename(defaultName), filters)
+		if err != nil || path == "" {
+			return
+		}
+		fyne.Do(func() { onPick(path) })
+	}()
+}
 
 func init() {
 	// macOS GUI apps launched from Finder or Spotlight inherit a minimal PATH

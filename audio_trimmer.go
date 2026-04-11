@@ -22,7 +22,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -468,13 +467,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 
 	// Open file
 	openBtn := widget.NewButton("Open M4B File", func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil || reader == nil {
-				return
-			}
-			reader.Close()
-			path := uriPath(reader.URI().Path())
-
+		pickFile(filterM4B, func(path string) {
 			out, err := runFFprobe("-v", "quiet", "-print_format", "json",
 				"-show_format", "-show_chapters", path)
 			if err != nil {
@@ -529,9 +522,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 			} else {
 				statusLabel.SetText("Loaded — no chapter metadata")
 			}
-		}, w)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".m4b", ".m4a"}))
-		fd.Show()
+		})
 	})
 
 	exportBtn.OnTapped = func() {
@@ -541,13 +532,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 		}
 
 		defaultName := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath)) + "_trimmed.m4b"
-		fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
-			if err != nil || writer == nil {
-				return
-			}
-			outPath := uriPath(writer.URI().Path())
-			writer.Close()
-
+		pickSaveFile(defaultName, filterM4BSave, func(outPath string) {
 			exportBtn.Disable()
 			progress.Show()
 			progress.SetValue(0)
@@ -566,10 +551,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 				defer cancel()
 				doTrimmerExport(ctx, w, sourcePath, outPath, totalDuration, chapters, cutRegions, progress, statusLabel, exportBtn, cancelBtn)
 			}()
-		}, w)
-		fd.SetFileName(defaultName)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".m4b"}))
-		fd.Show()
+		})
 	}
 
 	// Layout

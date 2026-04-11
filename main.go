@@ -44,6 +44,10 @@ func main() {
 		picker.Hide()
 		ShowTagEditor(a, picker)
 	})
+	btn7 := widget.NewButton("Video Merger", func() {
+		picker.Hide()
+		ShowVideoMerger(a, picker)
+	})
 
 	updateBtn := widget.NewButton("Check for Updates", func() {
 		go showUpdateDialogManual(picker)
@@ -54,14 +58,14 @@ func main() {
 		layout.NewSpacer(),
 		title,
 		widget.NewSeparator(),
-		btn1, btn2, btn3, btn4, btn5, btn6,
+		btn1, btn2, btn3, btn4, btn5, btn6, btn7,
 		widget.NewSeparator(),
 		updateBtn,
 		layout.NewSpacer(),
 	)
 
 	picker.SetContent(container.NewPadded(content))
-	picker.Resize(fyne.NewSize(320, 400))
+	picker.Resize(fyne.NewSize(320, 440))
 	picker.CenterOnScreen()
 	picker.SetCloseIntercept(func() {
 		a.Quit()

@@ -14,7 +14,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -65,12 +64,7 @@ func ShowTagEditor(a fyne.App, picker fyne.Window) {
 	coverCanvas.SetMinSize(fyne.NewSize(200, 200))
 
 	replaceCoverBtn := widget.NewButton("Replace Cover…", func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil || reader == nil {
-				return
-			}
-			defer reader.Close()
-			path := uriPath(reader.URI().Path())
+		pickFile(filterImage, func(path string) {
 			data, err := os.ReadFile(path)
 			if err != nil {
 				dialog.ShowError(fmt.Errorf("failed to read image: %w", err), w)
@@ -80,21 +74,14 @@ func ShowTagEditor(a fyne.App, picker fyne.Window) {
 			coverChanged = true
 			coverCanvas.Resource = fyne.NewStaticResource("cover", coverData)
 			coverCanvas.Refresh()
-		}, w)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".jpg", ".jpeg", ".png"}))
-		fd.Show()
+		})
 	})
 
 	saveBtn := widget.NewButton("Save As…", nil)
 	saveBtn.Disable()
 
 	openBtn := widget.NewButton("Open M4B File", func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil || reader == nil {
-				return
-			}
-			reader.Close()
-			path := uriPath(reader.URI().Path())
+		pickFile(filterM4B, func(path string) {
 			sourcePath = path
 			fileLabel.SetText(filepath.Base(path))
 
@@ -178,20 +165,12 @@ func ShowTagEditor(a fyne.App, picker fyne.Window) {
 			}
 
 			saveBtn.Enable()
-		}, w)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".m4b", ".m4a"}))
-		fd.Show()
+		})
 	})
 
 	saveBtn.OnTapped = func() {
 		defaultName := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath)) + "_tagged.m4b"
-		fd := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
-			if err != nil || writer == nil {
-				return
-			}
-			outPath := uriPath(writer.URI().Path())
-			writer.Close()
-
+		pickSaveFile(defaultName, filterM4BSave, func(outPath string) {
 			saveBtn.Disable()
 			progress.Show()
 			progress.SetValue(0)
@@ -203,10 +182,7 @@ func ShowTagEditor(a fyne.App, picker fyne.Window) {
 					probeData, coverData, coverChanged,
 					progress, statusLabel, saveBtn)
 			}()
-		}, w)
-		fd.SetFileName(defaultName)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".m4b"}))
-		fd.Show()
+		})
 	}
 
 	// Layout
