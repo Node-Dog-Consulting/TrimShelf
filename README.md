@@ -1,6 +1,6 @@
 # TrimShelf
 
-A cross-platform desktop toolkit for trimming and editing audiobooks, video files, and ebooks. TrimShelf bundles six focused tools into a single lightweight app.
+A cross-platform desktop toolkit for trimming and editing audiobooks, video files, and ebooks. TrimShelf bundles seven focused tools into a single lightweight app.
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![Go](https://img.shields.io/badge/Go-1.25-00ADD8)
@@ -54,6 +54,19 @@ Edit the metadata tags and cover art of an M4B audiobook without re-encoding the
 - Preserves all existing chapter metadata in the output
 - Exports a new `_tagged.m4b` with updated tags and cover via stream copy (no quality loss)
 
+### Video Merger
+Merge multiple video files into a single output with drag-and-drop ordering.
+
+- Supports `.mp4`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.flv`, `.webm`, `.m4v`, `.mpeg`, `.mpg`
+- Add multiple files at once via multi-file selection dialog
+- Reorder files with Move Up / Move Down buttons or Grab + Drop Here for arbitrary repositioning
+- Three encoding modes:
+  - **Stream copy** — fast concatenation (requires all files share the same codec and parameters)
+  - **GPU re-encode** — re-encodes to a common format using hardware acceleration
+  - **CPU re-encode** — universal software re-encode for mixed-format inputs
+- Output saved alongside the first file with a `_merged` suffix
+- Cancellable with progress feedback
+
 ### EPUB Chapter Cutter
 Remove selected chapters from an EPUB ebook while keeping the rest of the document intact.
 
@@ -79,7 +92,7 @@ Edit the plain text content of individual chapters within an EPUB ebook.
 
 | Dependency | Required for | Notes |
 |------------|-------------|-------|
-| [FFmpeg](https://ffmpeg.org/download.html) | M4B Chapter Extractor, M4B Audio Trimmer, Video Trimmer | `ffmpeg` and `ffprobe` must be on `PATH` or placed next to the TrimShelf binary |
+| [FFmpeg](https://ffmpeg.org/download.html) | M4B Chapter Extractor, M4B Audio Trimmer, Video Trimmer, Video Merger | `ffmpeg` and `ffprobe` must be on `PATH` or placed next to the TrimShelf binary |
 | [FFplay](https://ffmpeg.org/ffplay.html) | M4B Audio Trimmer (playback) | Included with most FFmpeg distributions |
 | [libmpv](https://mpv.io) | Video Trimmer | Required only for MPV builds |
 
@@ -130,7 +143,7 @@ You can also check manually at any time using the **Check for Updates** button a
 - A C compiler (`gcc` on Linux/Windows, Xcode CLT on macOS) — required for CGO
 - `libmpv` development headers (only for the MPV / Video Trimmer build)
 
-### Standard build (4 tools, no Video Trimmer)
+### Standard build (5 tools, no Video Trimmer)
 
 ```bash
 make build
@@ -190,6 +203,7 @@ trimshelf/
 ├── chapter_extractor.go     # M4B Chapter Extractor tool
 ├── audio_trimmer.go         # M4B Audio Trimmer tool
 ├── video_trimmer.go         # Video Trimmer tool (MPV build only)
+├── video_merger.go          # Video Merger tool
 ├── mpv.go                   # MPV C bindings (MPV build only)
 ├── mpv_stub.go              # MPV stub for non-MPV builds
 ├── tag_editor.go            # M4B Tag Editor tool
@@ -237,13 +251,13 @@ The CI workflow will build signed/notarized artifacts for macOS, Windows, and Li
 
 ## CI / CD
 
-Builds run on self-hosted runners via `.github/workflows/build.yml`:
+Builds run on GitHub-hosted runners via `.github/workflows/build.yml`:
 
 | Platform | Runner | Artifact |
 |----------|--------|----------|
-| macOS (ARM64) | self-hosted macOS | `TrimShelf.dmg` (signed + notarized) |
-| Windows (amd64) | self-hosted Windows | `TrimShelf-Setup.exe` |
-| Linux (amd64) | self-hosted Linux | `TrimShelf-Linux-amd64.zip` |
+| macOS (ARM64) | `macos-latest` | `TrimShelf.dmg` (signed + notarized) |
+| Windows (amd64) | `windows-latest` | `TrimShelf-Setup.exe` |
+| Linux (amd64) | `ubuntu-latest` | `TrimShelf-Linux-amd64.zip` |
 
 Releases are created automatically when a `v*` tag is pushed. The release notes are generated from commits since the previous release tag.
 
