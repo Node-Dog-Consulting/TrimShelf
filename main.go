@@ -48,6 +48,10 @@ func main() {
 		picker.Hide()
 		ShowVideoMerger(a, picker)
 	})
+	btn8 := widget.NewButton("EPUB Tag Editor", func() {
+		picker.Hide()
+		ShowEpubTagEditor(a, picker)
+	})
 
 	updateBtn := widget.NewButton("Check for Updates", func() {
 		go showUpdateDialogManual(picker)
@@ -58,14 +62,14 @@ func main() {
 		layout.NewSpacer(),
 		title,
 		widget.NewSeparator(),
-		btn1, btn2, btn3, btn4, btn5, btn6, btn7,
+		btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8,
 		widget.NewSeparator(),
 		updateBtn,
 		layout.NewSpacer(),
 	)
 
 	picker.SetContent(container.NewPadded(content))
-	picker.Resize(fyne.NewSize(320, 440))
+	picker.Resize(fyne.NewSize(320, 470))
 	picker.CenterOnScreen()
 	picker.SetCloseIntercept(func() {
 		a.Quit()
