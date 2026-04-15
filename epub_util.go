@@ -20,9 +20,18 @@ var collapseNewlines = regexp.MustCompile(`\n{3,}`)
 
 // ManifestItem represents an item in the OPF manifest.
 type ManifestItem struct {
-	ID        string
-	Href      string
-	MediaType string
+	ID         string
+	Href       string
+	MediaType  string
+	Properties string
+}
+
+// EpubMetadata holds the editable metadata fields of an EPUB.
+type EpubMetadata struct {
+	Title       string
+	Creator     string
+	Publisher   string
+	Description string
 }
 
 // SpineItem represents an item in the OPF spine.
@@ -225,9 +234,10 @@ func ReadEpub(epubPath string) (*EpubBook, error) {
 	// Build manifest
 	for _, item := range pkg.Manifest.Items {
 		book.Manifest = append(book.Manifest, ManifestItem{
-			ID:        item.ID,
-			Href:      item.Href,
-			MediaType: item.MediaType,
+			ID:         item.ID,
+			Href:       item.Href,
+			MediaType:  item.MediaType,
+			Properties: item.Prop,
 		})
 	}
 
@@ -655,8 +665,13 @@ func (b *EpubBook) rebuildOPF() []byte {
 	// Write manifest
 	fmt.Fprintf(&buf, "  <manifest>\n")
 	for _, item := range b.Manifest {
-		fmt.Fprintf(&buf, "    <item id=%q href=%q media-type=%q/>\n",
-			item.ID, item.Href, item.MediaType)
+		if item.Properties != "" {
+			fmt.Fprintf(&buf, "    <item id=%q href=%q media-type=%q properties=%q/>\n",
+				item.ID, item.Href, item.MediaType, item.Properties)
+		} else {
+			fmt.Fprintf(&buf, "    <item id=%q href=%q media-type=%q/>\n",
+				item.ID, item.Href, item.MediaType)
+		}
 	}
 	fmt.Fprintf(&buf, "  </manifest>\n")
 
@@ -965,6 +980,181 @@ func buildMinimalXHTML(text string) []byte {
 	}
 	buf.WriteString("</body>\n</html>\n")
 	return buf.Bytes()
+}
+
+// ── Metadata helpers ────────────────────────────────────────────────────────
+
+// opfMetaParse is used only for reading dc: metadata; it is separate from the
+// write-path structs so the two don't interfere with each other.
+type opfMetaParse struct {
+	XMLName  xml.Name      `xml:"package"`
+	Metadata opfMetaFields `xml:"metadata"`
+}
+
+type opfMetaFields struct {
+	Titles       []dcCharEl `xml:"http://purl.org/dc/elements/1.1/ title"`
+	Creators     []dcCharEl `xml:"http://purl.org/dc/elements/1.1/ creator"`
+	Publishers   []dcCharEl `xml:"http://purl.org/dc/elements/1.1/ publisher"`
+	Descriptions []dcCharEl `xml:"http://purl.org/dc/elements/1.1/ description"`
+}
+
+type dcCharEl struct {
+	Value string `xml:",chardata"`
+}
+
+// GetMetadata parses and returns the editable metadata from the OPF.
+func (b *EpubBook) GetMetadata() EpubMetadata {
+	var pkg opfMetaParse
+	if err := xml.Unmarshal(b.opfRaw, &pkg); err != nil {
+		return EpubMetadata{}
+	}
+	m := pkg.Metadata
+	meta := EpubMetadata{}
+	if len(m.Titles) > 0 {
+		meta.Title = strings.TrimSpace(m.Titles[0].Value)
+	}
+	if len(m.Creators) > 0 {
+		meta.Creator = strings.TrimSpace(m.Creators[0].Value)
+	}
+	if len(m.Publishers) > 0 {
+		meta.Publisher = strings.TrimSpace(m.Publishers[0].Value)
+	}
+	if len(m.Descriptions) > 0 {
+		meta.Description = strings.TrimSpace(m.Descriptions[0].Value)
+	}
+	return meta
+}
+
+// SetMetadata updates the dc: elements in the raw OPF, replacing the first
+// occurrence of each element or inserting it before </metadata> if absent.
+func (b *EpubBook) SetMetadata(meta EpubMetadata) {
+	opf := string(b.opfRaw)
+	opf = setOPFDCElement(opf, "title", meta.Title)
+	opf = setOPFDCElement(opf, "creator", meta.Creator)
+	opf = setOPFDCElement(opf, "publisher", meta.Publisher)
+	opf = setOPFDCElement(opf, "description", meta.Description)
+	b.opfRaw = []byte(opf)
+}
+
+// setOPFDCElement replaces the first <dc:name>…</dc:name> in the OPF string, or
+// inserts one before </metadata> if none is present.
+func setOPFDCElement(opf, localName, value string) string {
+	tag := "dc:" + localName
+	re := regexp.MustCompile(`(?s)<` + regexp.QuoteMeta(tag) + `[^>]*>.*?</` + regexp.QuoteMeta(tag) + `>`)
+	replacement := "<" + tag + ">" + xmlEscape(value) + "</" + tag + ">"
+	if loc := re.FindStringIndex(opf); loc != nil {
+		return opf[:loc[0]] + replacement + opf[loc[1]:]
+	}
+	return strings.Replace(opf, "</metadata>", "    "+replacement+"\n  </metadata>", 1)
+}
+
+// ── Cover image helpers ──────────────────────────────────────────────────────
+
+// GetCoverImage returns the raw bytes of the cover image, or nil if none.
+func (b *EpubBook) GetCoverImage() ([]byte, error) {
+	// EPUB3: manifest item with properties="cover-image"
+	for _, item := range b.Manifest {
+		if item.Properties == "cover-image" {
+			data := b.GetContent(item.ID)
+			return data, nil
+		}
+	}
+	// EPUB2: <meta name="cover" content="item-id"/>
+	if id := b.findCoverMetaID(); id != "" {
+		data := b.GetContent(id)
+		return data, nil
+	}
+	return nil, nil
+}
+
+// findCoverMetaID returns the manifest item ID referenced by an EPUB2
+// <meta name="cover"> element, or "" if not present.
+func (b *EpubBook) findCoverMetaID() string {
+	reMeta := regexp.MustCompile(`<meta\b[^>]+>`)
+	reContent := regexp.MustCompile(`content\s*=\s*["']([^"']+)["']`)
+	for _, match := range reMeta.FindAllString(string(b.opfRaw), -1) {
+		if strings.Contains(match, `name="cover"`) || strings.Contains(match, `name='cover'`) {
+			if cm := reContent.FindStringSubmatch(match); len(cm) > 1 {
+				return cm[1]
+			}
+		}
+	}
+	return ""
+}
+
+// SetCoverImage replaces the existing cover image or adds a new one.
+func (b *EpubBook) SetCoverImage(data []byte, mediaType string) {
+	ext := ".jpg"
+	if mediaType == "image/png" {
+		ext = ".png"
+	}
+
+	// Try to find and update an existing cover item.
+	for i := range b.Manifest {
+		if b.Manifest[i].Properties == "cover-image" {
+			b.updateCoverFile(&b.Manifest[i], data, mediaType)
+			return
+		}
+	}
+	if id := b.findCoverMetaID(); id != "" {
+		for i := range b.Manifest {
+			if b.Manifest[i].ID == id {
+				b.updateCoverFile(&b.Manifest[i], data, mediaType)
+				return
+			}
+		}
+	}
+
+	// No existing cover: add one.
+	coverHref := "cover" + ext
+	var coverZipPath string
+	if b.opfDir != "" {
+		coverZipPath = b.opfDir + "/" + coverHref
+	} else {
+		coverZipPath = coverHref
+	}
+	b.Manifest = append(b.Manifest, ManifestItem{
+		ID:         "cover-image",
+		Href:       coverHref,
+		MediaType:  mediaType,
+		Properties: "cover-image",
+	})
+	b.files[coverZipPath] = data
+	// EPUB2 compatibility: add <meta name="cover"> to the metadata block.
+	metaTag := `<meta name="cover" content="cover-image"/>`
+	b.opfRaw = []byte(strings.Replace(string(b.opfRaw), "</metadata>",
+		"    "+metaTag+"\n  </metadata>", 1))
+}
+
+// updateCoverFile writes new image bytes for an existing manifest cover item
+// and updates its media-type if it changed (e.g. JPG → PNG).
+func (b *EpubBook) updateCoverFile(item *ManifestItem, data []byte, mediaType string) {
+	oldHref := b.resolveHref(item.Href)
+
+	ext := ".jpg"
+	if mediaType == "image/png" {
+		ext = ".png"
+	}
+
+	// Keep the same filename when possible; only rename if the extension changed.
+	newHref := item.Href
+	if !strings.HasSuffix(strings.ToLower(item.Href), ext) {
+		newHref = strings.TrimSuffix(item.Href, path.Ext(item.Href)) + ext
+	}
+	newZipPath := b.resolveHref(newHref)
+	if newZipPath == "" {
+		newZipPath = oldHref // fallback
+	}
+
+	// Remove old file if we renamed it.
+	if oldHref != newZipPath && oldHref != "" {
+		delete(b.files, oldHref)
+		b.removed[oldHref] = true
+	}
+
+	item.Href = newHref
+	item.MediaType = mediaType
+	b.files[newZipPath] = data
 }
 
 // SpineItemInfo holds display info for a spine item.
