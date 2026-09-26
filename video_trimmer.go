@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -547,6 +548,66 @@ func videoKeepSegments(cuts []videoCut, durationSec float64) []videoCut {
 	return segments
 }
 
+// keyframeSeekEpsilon is added to snapped segment starts so that the -ss value
+// passed to ffmpeg never rounds to just before the keyframe, which would make
+// ffmpeg fall back to the previous keyframe.
+const keyframeSeekEpsilon = 0.001
+
+// videoKeyframeTimes returns the sorted timestamps (in seconds, relative to the
+// start of the file) of the video keyframes in path.
+func videoKeyframeTimes(path string) ([]float64, error) {
+	out, err := runFFprobe("-v", "error", "-select_streams", "v:0",
+		"-show_entries", "format=start_time:packet=pts_time,flags", "-of", "csv", path)
+	if err != nil {
+		return nil, err
+	}
+	var startTime float64
+	var keyframes []float64
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Split(strings.TrimSpace(line), ",")
+		switch {
+		case len(fields) >= 2 && fields[0] == "format":
+			if v, err := strconv.ParseFloat(fields[1], 64); err == nil {
+				startTime = v
+			}
+		case len(fields) >= 3 && fields[0] == "packet" && strings.Contains(fields[2], "K"):
+			if v, err := strconv.ParseFloat(fields[1], 64); err == nil {
+				keyframes = append(keyframes, v)
+			}
+		}
+	}
+	for i := range keyframes {
+		keyframes[i] -= startTime
+	}
+	sort.Float64s(keyframes)
+	return keyframes, nil
+}
+
+// snapSegmentsToKeyframes moves the start of each keep-segment forward to the
+// next keyframe. Stream copy can only begin a segment on a keyframe, and ffmpeg
+// otherwise rewinds to the previous one, putting part of the removed section
+// back into the output. Snapping forward means a cut may remove slightly more
+// than marked, but never less. Segments with no keyframe before their end are
+// dropped.
+func snapSegmentsToKeyframes(segments []videoCut, keyframes []float64) []videoCut {
+	if len(keyframes) == 0 {
+		return segments
+	}
+	var snapped []videoCut
+	for _, seg := range segments {
+		if seg.Start <= 0 {
+			snapped = append(snapped, seg)
+			continue
+		}
+		i := sort.SearchFloat64s(keyframes, seg.Start-keyframeSeekEpsilon)
+		if i >= len(keyframes) || keyframes[i] >= seg.End-minSegmentGap {
+			continue
+		}
+		snapped = append(snapped, videoCut{Start: keyframes[i] + keyframeSeekEpsilon, End: seg.End})
+	}
+	return snapped
+}
+
 func doVideoTrim(ctx context.Context, cancel context.CancelFunc, w fyne.Window, inputPath, outputPath string, cuts []videoCut, durationSec float64,
 	encMode string, gpuEncoder string,
 	cutBtn *widget.Button, cancelBtn *widget.Button, progress *widget.ProgressBar, progressLabel *widget.Label) {
@@ -581,6 +642,19 @@ func doVideoTrim(ctx context.Context, cancel context.CancelFunc, w fyne.Window, 
 		defer os.RemoveAll(tmpDir)
 
 		segments := videoKeepSegments(cuts, durationSec)
+
+		if encMode == "copy" {
+			fyne.Do(func() { progressLabel.SetText("Finding keyframes...") })
+			keyframes, err := videoKeyframeTimes(inputPath)
+			if err != nil {
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("failed to read keyframes: %w", err), w)
+					progress.Hide()
+				})
+				return
+			}
+			segments = snapSegmentsToKeyframes(segments, keyframes)
+		}
 
 		if len(segments) == 0 {
 			fyne.Do(func() {

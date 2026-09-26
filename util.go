@@ -103,6 +103,16 @@ func formatHHMMSS(seconds float64) string {
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, sec)
 }
 
+func formatHHMMSSms(seconds float64) string {
+	if seconds < 0 {
+		seconds = 0
+	}
+	h := int(seconds) / 3600
+	m := (int(seconds) % 3600) / 60
+	s := seconds - float64(h*3600+m*60)
+	return fmt.Sprintf("%02d:%02d:%06.3f", h, m, s)
+}
+
 func formatTimeMs(ms float64) string {
 	seconds := ms / 1000.0
 	h := int(seconds) / 3600

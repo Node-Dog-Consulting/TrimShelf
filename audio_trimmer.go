@@ -90,7 +90,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 	positionLabel.Importance = widget.LowImportance
 
 	scrubber := widget.NewSlider(0, 1)
-	scrubber.Step = 0.1
+	scrubber.Step = 0.01
 
 	// Timeline raster
 	var timelineRaster *canvas.Raster
@@ -169,7 +169,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 
 	updatePosition := func() {
 		pos := scrubber.Value
-		positionLabel.SetText(fmt.Sprintf("Position: %s / %s", formatHHMMSS(pos), formatHHMMSS(totalDuration)))
+		positionLabel.SetText(fmt.Sprintf("Position: %s / %s", formatHHMMSSms(pos), formatHHMMSSms(totalDuration)))
 		refreshTimeline()
 	}
 
@@ -349,10 +349,10 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 	updatePendingLabel := func() {
 		var parts []string
 		if pendingStart != nil {
-			parts = append(parts, fmt.Sprintf("Start: %s", formatHHMMSS(*pendingStart)))
+			parts = append(parts, fmt.Sprintf("Start: %s", formatHHMMSSms(*pendingStart)))
 		}
 		if pendingEnd != nil {
-			parts = append(parts, fmt.Sprintf("End: %s", formatHHMMSS(*pendingEnd)))
+			parts = append(parts, fmt.Sprintf("End: %s", formatHHMMSSms(*pendingEnd)))
 		}
 		if len(parts) > 0 {
 			pendingLabel.SetText(strings.Join(parts, "  |  "))
@@ -398,7 +398,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 			dur := cr.End - cr.Start
 			numLabel.SetText(fmt.Sprintf("%d.", id+1))
 			label.SetText(fmt.Sprintf("%s  ->  %s   (%s)",
-				formatHHMMSS(cr.Start), formatHHMMSS(cr.End), formatDuration(dur)))
+				formatHHMMSSms(cr.Start), formatHHMMSSms(cr.End), formatDuration(dur)))
 			delBtn.OnTapped = func() {
 				if id >= 0 && id < len(cutRegions) {
 					cutRegions = append(cutRegions[:id], cutRegions[id+1:]...)
@@ -441,7 +441,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 			if start < existing.End && end > existing.Start {
 				dialog.ShowInformation("Overlap",
 					fmt.Sprintf("This region overlaps with existing cut %s -> %s.",
-						formatHHMMSS(existing.Start), formatHHMMSS(existing.End)), w)
+						formatHHMMSSms(existing.Start), formatHHMMSSms(existing.End)), w)
 				return
 			}
 		}
@@ -497,7 +497,7 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 			pendingEnd = nil
 
 			fileLabel.SetText(filepath.Base(path))
-			durationLabel.SetText(fmt.Sprintf("Total: %s", formatHHMMSS(dur)))
+			durationLabel.SetText(fmt.Sprintf("Total: %s", formatHHMMSSms(dur)))
 
 			scrubber.Max = dur
 			scrubber.SetValue(0)
@@ -568,6 +568,10 @@ func ShowAudioTrimmer(a fyne.App, picker fyne.Window) {
 		widget.NewSeparator(),
 		widget.NewButton("<< 10s", func() { skip(-10) }),
 		widget.NewButton("< 1s", func() { skip(-1) }),
+		widget.NewButton("< 0.1s", func() { skip(-0.1) }),
+		widget.NewButton("< 10ms", func() { skip(-0.01) }),
+		widget.NewButton("10ms >", func() { skip(0.01) }),
+		widget.NewButton("0.1s >", func() { skip(0.1) }),
 		widget.NewButton("1s >", func() { skip(1) }),
 		widget.NewButton("10s >>", func() { skip(10) }),
 		layout.NewSpacer(),

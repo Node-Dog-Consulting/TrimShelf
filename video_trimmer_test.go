@@ -87,3 +87,58 @@ func TestVideoKeepSegments(t *testing.T) {
 		})
 	}
 }
+
+func TestSnapSegmentsToKeyframes(t *testing.T) {
+	const e = keyframeSeekEpsilon
+	keyframes := []float64{0, 10, 20, 30}
+	tests := []struct {
+		name      string
+		keyframes []float64
+		segments  []videoCut
+		want      []videoCut
+	}{
+		{
+			name:      "start at zero is untouched",
+			keyframes: keyframes,
+			segments:  []videoCut{{Start: 0, End: 12}},
+			want:      []videoCut{{Start: 0, End: 12}},
+		},
+		{
+			name:      "start between keyframes snaps forward",
+			keyframes: keyframes,
+			segments:  []videoCut{{Start: 0, End: 12}, {Start: 18, End: 40}},
+			want:      []videoCut{{Start: 0, End: 12}, {Start: 20 + e, End: 40}},
+		},
+		{
+			name:      "start on a keyframe stays on it",
+			keyframes: keyframes,
+			segments:  []videoCut{{Start: 10, End: 15}},
+			want:      []videoCut{{Start: 10 + e, End: 15}},
+		},
+		{
+			name:      "segment with no keyframe inside is dropped",
+			keyframes: keyframes,
+			segments:  []videoCut{{Start: 0, End: 5}, {Start: 12, End: 19}, {Start: 25, End: 40}},
+			want:      []videoCut{{Start: 0, End: 5}, {Start: 30 + e, End: 40}},
+		},
+		{
+			name:     "no keyframes leaves segments unchanged",
+			segments: []videoCut{{Start: 18, End: 40}},
+			want:     []videoCut{{Start: 18, End: 40}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := snapSegmentsToKeyframes(tt.segments, tt.keyframes)
+			if len(got) != len(tt.want) {
+				t.Fatalf("len = %d, want %d\n  got:  %v\n  want: %v", len(got), len(tt.want), got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("segment[%d] = %v, want %v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
